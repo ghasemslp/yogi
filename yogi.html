@@ -845,9 +845,15 @@
       }
 
       /* لودینگ مستقیم روی تصویر اصلی، بدون پنل یا متن */
-      .loader {
+      .loading-status {
         position: relative;
         z-index: 1;
+        display: grid;
+        justify-items: center;
+        gap: .72rem;
+      }
+
+      .loader {
         height: 15px;
         aspect-ratio: 4;
         --_g: no-repeat radial-gradient(farthest-side, #fff 90%, transparent);
@@ -875,6 +881,21 @@
         transform-origin: 200% 50%;
         --s: -1;
         animation-delay: -.5s;
+      }
+
+      .loading-percent {
+        display: inline-flex;
+        direction: ltr;
+        align-items: baseline;
+        justify-content: center;
+        min-width: 4rem;
+        color: rgba(255, 255, 255, .96);
+        font-family: "YogitoUI", Vazirmatn, "Segoe UI", Tahoma, sans-serif;
+        font-size: clamp(.8rem, 2.4vw, 1rem);
+        font-weight: 900;
+        letter-spacing: .035em;
+        text-shadow: 0 0 12px rgba(255, 255, 255, .92), 0 0 28px rgba(216, 237, 255, .62);
+        transition: opacity .2s ease;
       }
 
       @keyframes bubble-drift {
@@ -1015,8 +1036,13 @@
     </main>
 
     <section class="loading-screen" id="loading-screen" aria-live="polite">
-      <img class="loading-image" src="loding.png" alt="" />
-      <div class="loader" role="status" aria-label="در حال بارگذاری"></div>
+      <img class="loading-image" src="" alt="" />
+      <div class="loading-status" role="status" aria-live="polite" aria-label="در حال بارگذاری تصاویر داستان">
+        <div class="loader" aria-hidden="true"></div>
+        <div class="loading-percent" aria-label="درصد دریافت تصاویر">
+          <span aria-hidden="true">%</span><span id="loading-percent-value">0</span>
+        </div>
+      </div>
     </section>
 
     <script>
@@ -1032,7 +1058,7 @@
             ]
           },
           {
-            image: "1.jpg",
+            image: "1.webp",
             nextLabel: "ادامه",
             autoplay: true,
             entries: [
@@ -1048,7 +1074,7 @@
             ]
           },
           {
-            image: "2.png",
+            image: "2.webp",
             nextLabel: "ادامه",
             autoplay: true,
             entries: [
@@ -1064,7 +1090,7 @@
             ]
           },
           {
-            image: "3.png",
+            image: "3.webp",
             nextLabel: "ادامه",
             autoplay: true,
             entries: [
@@ -1096,7 +1122,7 @@
             ]
           },
           {
-            image: "4.png",
+            image: "4.webp",
             nextLabel: "ادامه",
             autoplay: true,
             entries: [
@@ -1120,7 +1146,7 @@
             ]
           },
           {
-            image: "5.png",
+            image: "5.webp",
             nextLabel: "ادامه",
             autoplay: true,
             entries: [
@@ -1140,7 +1166,7 @@
             ]
           },
           {
-            image: "6.png",
+            image: "6.webp",
             nextLabel: "ادامه",
             autoplay: true,
             entries: [
@@ -1154,7 +1180,7 @@
             ]
           },
           {
-            image: "7.png",
+            image: "7.webp",
             nextLabel: "ادامه",
             autoplay: true,
             entries: [
@@ -1169,7 +1195,7 @@
             ]
           },
           {
-            image: "8.png",
+            image: "8.webp",
             nextLabel: "ادامه",
             autoplay: true,
             entries: [
@@ -1184,7 +1210,7 @@
             ]
           },
           {
-            image: "9.png",
+            image: "9.webp",
             nextLabel: "ادامه",
             autoplay: true,
             entries: [
@@ -1198,7 +1224,7 @@
             ]
           },
           {
-            image: "10.png",
+            image: "10.webp",
             nextLabel: "انتخاب غار",
             autoplay: true,
             entries: [
@@ -1217,7 +1243,7 @@
             ]
           },
           {
-            image: "10.png",
+            image: "10.webp",
             choicePage: true,
             nextLabel: "",
             final: true,
@@ -1239,10 +1265,11 @@
         const nextButton = document.getElementById("next-button");
         const previousButton = document.getElementById("previous-button");
         const replayButton = document.getElementById("replay-button");
+        const loadingPercentValue = document.getElementById("loading-percent-value");
         const messageAvatars = Object.freeze({
-          yogi: "yogi.png",
-          nila: "nila.png",
-          kherkol: "kherkol.png"
+          yogi: "yogi.webp",
+          nila: "nila.webp",
+          kherkol: "kherkol.webp"
         });
         const slideDuration = 760;
         const introWipeDuration = 2350;
@@ -1250,8 +1277,16 @@
         const lastModifiedTime = Date.parse(document.lastModified);
         const assetVersion = Number.isFinite(lastModifiedTime)
           ? lastModifiedTime.toString(36)
-          : Date.now().toString(36);
+          : "webp-v1";
         const freshAsset = (assetPath) => `${assetPath}?v=${assetVersion}`;
+        const assetCacheName = `yogi-adventure-assets-${assetVersion}`;
+        const assetCachePrefix = "yogi-adventure-assets-";
+        const assetSources = new Map();
+        const imageAssets = Object.freeze(Array.from(new Set([
+          "loding.webp",
+          ...pages.map((page) => page.image).filter(Boolean),
+          ...Object.values(messageAvatars)
+        ])));
 
         if (window.location.search) {
           window.history.replaceState(null, "", `${window.location.pathname}${window.location.hash}`);
@@ -1262,6 +1297,73 @@
         const completedPages = new Set();
 
         const numberToPersian = (number) => number.toLocaleString("fa-IR", { useGrouping: false });
+
+        const setLoadingProgress = (percent) => {
+          loadingPercentValue.textContent = String(Math.max(0, Math.min(100, Math.round(percent))));
+        };
+
+        const getAssetSource = (assetPath) => assetSources.get(assetPath) || freshAsset(assetPath);
+
+        const preloadWithImage = (url) => new Promise((resolve) => {
+          const image = new Image();
+          image.onload = image.onerror = () => resolve(url);
+          image.src = url;
+        });
+
+        const openAssetCache = async () => {
+          if (!("caches" in window)) return null;
+          try {
+            const cache = await window.caches.open(assetCacheName);
+            const names = await window.caches.keys();
+            await Promise.all(names
+              .filter((name) => name.startsWith(assetCachePrefix) && name !== assetCacheName)
+              .map((name) => window.caches.delete(name)));
+            return cache;
+          } catch {
+            return null;
+          }
+        };
+
+        const loadAsset = async (assetPath, cache) => {
+          const url = freshAsset(assetPath);
+          try {
+            let response = cache ? await cache.match(url) : null;
+            if (!response) {
+              response = await fetch(url, { cache: "force-cache" });
+              if (!response.ok) throw new Error(`Asset request failed: ${response.status}`);
+              if (cache) await cache.put(url, response.clone());
+            }
+            const source = URL.createObjectURL(await response.blob());
+            assetSources.set(assetPath, source);
+            return source;
+          } catch {
+            const source = await preloadWithImage(url);
+            assetSources.set(assetPath, source);
+            return source;
+          }
+        };
+
+        const preloadStoryAssets = async () => {
+          const startedAt = performance.now();
+          const cache = await openAssetCache();
+          let completed = 0;
+          setLoadingProgress(0);
+
+          const preloadOne = async (assetPath) => {
+            const source = await loadAsset(assetPath, cache);
+            if (assetPath === "loding.webp") loadingImage.src = source;
+            completed += 1;
+            setLoadingProgress((completed / imageAssets.length) * 100);
+          };
+
+          const loadingAsset = preloadOne("loding.webp");
+          const remainingAssets = imageAssets
+            .filter((assetPath) => assetPath !== "loding.webp")
+            .map(preloadOne);
+          await Promise.all([loadingAsset, ...remainingAssets]);
+          await wait(Math.max(0, 5000 - (performance.now() - startedAt)));
+          setLoadingProgress(100);
+        };
 
         const getSceneParts = (scene) => ({
           image: scene.querySelector(".story-image"),
@@ -1280,14 +1382,14 @@
           });
         };
 
-        const syncControls = (page, pageIndex, isLocked = false) => {
+        const syncControls = (page, pageIndex, isLocked = false, allowContinueDuringTyping = false) => {
           const isIntro = Boolean(page.intro);
           const isChoicePage = Boolean(page.choicePage);
           controls.classList.toggle("is-intro", isIntro);
           controls.classList.toggle("is-choice-page", isChoicePage);
           nextButton.textContent = page.nextLabel;
           nextButton.hidden = isChoicePage;
-          nextButton.disabled = isLocked || Boolean(page.final || page.autoplay);
+          nextButton.disabled = isLocked || Boolean(page.final || (page.autoplay && !allowContinueDuringTyping));
           previousButton.hidden = isIntro || pageIndex < 2 || isChoicePage;
           previousButton.disabled = isLocked;
           replayButton.hidden = true;
@@ -1306,7 +1408,7 @@
           scene.classList.toggle("has-image", Boolean(page.image));
 
           if (page.image) {
-            image.src = freshAsset(page.image);
+            image.src = getAssetSource(page.image);
             image.alt = `تصویر ${numberToPersian(pageIndex)} داستان`;
           } else {
             image.removeAttribute("src");
@@ -1390,7 +1492,7 @@
           if (avatarSource) {
             const avatar = document.createElement("img");
             avatar.className = "message-avatar";
-            avatar.src = freshAsset(avatarSource);
+            avatar.src = getAssetSource(avatarSource);
             avatar.alt = "";
             avatar.setAttribute("aria-hidden", "true");
             row.append(avatar);
@@ -1520,6 +1622,9 @@
           if (isSliding || targetIndex < 0 || targetIndex >= pages.length) return;
 
           isSliding = true;
+          if (currentPage > 0 && !completedPages.has(currentPage)) {
+            completedPages.add(currentPage);
+          }
           const version = ++playbackVersion;
           const outgoingScene = activeScene;
           const incomingScene = sceneBlueprint.cloneNode(true);
@@ -1612,21 +1717,13 @@
           const version = ++playbackVersion;
           completedPages.delete(currentPage);
           prepareScene(activeScene, pages[currentPage], currentPage);
-          syncControls(pages[currentPage], currentPage);
+          syncControls(pages[currentPage], currentPage, false, true);
           startSceneContent(activeScene, currentPage, version);
         });
 
-        window.setTimeout(() => {
+        void preloadStoryAssets().finally(() => {
           loadingScreen.classList.add("is-complete");
           window.setTimeout(() => startPage(activeScene, currentPage), 620);
-        }, 5000);
-
-        loadingImage.src = freshAsset("loding.png");
-
-        pages.slice(1).forEach((page) => {
-          if (!page.image) return;
-          const preload = new Image();
-          preload.src = freshAsset(page.image);
         });
       })();
     </script>
